@@ -7,9 +7,10 @@
 1. create [the BU 0001's app team secure AKS cluster (ID: A0008)](./secure-baseline/cluster-deploy.azcli)
    > Note: execute this step from VSCode for a better experience
 1. Download the AKS credentails
-   ``` bash
+   ```bash
    az aks get-credentials -g rg-bu0001a0008 -n <cluster-name> --admin
    ```
+
 ### Generate a CA self-signed cert
 
 > :warning: WARNING
@@ -81,7 +82,7 @@ exit 0
 
 ### Configure Azure Application Gateway
 
-```bash
+````bash
 # query the BU 0001's Azure Application Gateway Name
 export APP_GATEWAY_NAME=$(az deployment group show -g rg-bu0001a0008 -n cluster-stamp-bu0001a0008 --query properties.outputs.agwName.value -o tsv)
 
@@ -103,10 +104,6 @@ az network application-gateway http-settings update    \
    --root-certs root-cert-wildcard-bicycle-contoso \
    --protocol Https
 
-# configure Azure Application Gateway lister, rules and more
-TODO
-```
-
 ### Test the web app
 ```bash
 # query the BU 0001's Azure Application Gateway Public Ip FQDN
@@ -114,6 +111,6 @@ export APP_GATEWAY_PUBLIC_IP_FQDN=$(az deployment group show --resource-group rg
 
 # make a Http request through the Azure Application Gateway
 curl https://${APP_GATEWAY_PUBLIC_IP_FQDN}
-```
+````
 
 > Note: alternatively open a browser and navite to http://${APP_GATEWAY_PUBLIC_IP_FQDN}

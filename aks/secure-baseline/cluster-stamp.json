@@ -26,6 +26,18 @@
                 "description": "This is tennant where the ServerAppId, ServerAppSecret, ClientAppId all reside"
             }
         },
+        "appGatewayCertificateData": {
+            "type": "string",
+            "metadata": {
+                "description": "Certificate data for gateway TLS"
+            }
+        },
+        "aksLoadBalancerData": {
+            "type": "string",
+            "metadata": {
+                "description": "Certificate public data as trusted root certificates application gateway backend pool"
+            }
+        },
         "location": {
             "defaultValue": "eastus2",
             "type": "string",
@@ -91,16 +103,35 @@
         "vnetNodePoolSubnetResourceId": "[concat(parameters('targetVnetResourceId'), '/subnets/snet-clusternodes')]",
 
         "agwName": "[concat( 'apw-', variables('clusterName')) ]",
-        "apwResourceId": "[resourceId('Microsoft.Network/applicationGateways', variables('agwName'))]"
+        "apwResourceId": "[resourceId('Microsoft.Network/applicationGateways', variables('agwName'))]",
+        "keyVaultName": "[concat( 'kv-', variables('clusterName'))]"
     },
     "resources": [
         {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "name": "appw-to-keyvault",
+            "apiVersion": "2018-11-30",
+            "location": "[parameters('location')]"
+        },
+        {
             "type": "Microsoft.KeyVault/vaults",
-            "name": "[concat( 'kv-', variables('clusterName')) ]",
+            "name": "[variables('keyVaultName') ]",
             "apiVersion": "2019-09-01",
             "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'appw-to-keyvault')]"
+            ],
             "properties": {
                 "accessPolicies": [
+                    {
+                        "tenantId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities','appw-to-keyvault')).tenantId]",
+                        "objectId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities','appw-to-keyvault')).principalId]",
+                        "permissions": {
+                            "secrets": [
+                                "get"
+                            ]
+                        }
+                    }
                 ],
                 "sku": {
                     "family": "A",
@@ -123,15 +154,49 @@
             }
         },
         {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2019-09-01",
+            "name": "[concat( variables('keyVaultName') , '/sslcert')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName') )]"
+            ],
+            "properties": {
+                "value": "[parameters('appGatewayCertificateData')]",
+                "recoveryLevel": "Purgeable"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2019-09-01",
+            "name": "[concat( variables('keyVaultName') , '/backend-sslcert')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName') )]"
+            ],
+            "properties": {
+                "value": "[parameters('aksLoadBalancerData')]",
+                "recoveryLevel": "Purgeable"
+            }
+        },
+        {
             "type": "Microsoft.Network/applicationGateways",
             "apiVersion": "2019-11-01",
             "name": "[variables('agwName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName') )]"
+            ],
             "location": "[parameters('location')]",
             "zones": [
                 "1",
                 "2",
                 "3"
             ],
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities',  'appw-to-keyvault')]": {
+                    }
+                }
+            },
             "tags": {
             },
             "properties": {
@@ -139,6 +204,14 @@
                     "name": "WAF_v2",
                     "tier": "WAF_v2"
                 },
+                "trustedRootCertificates": [
+                    {
+                        "name": "root-cert-wildcard-bicycle-contoso",
+                        "properties": {
+                            "data": "[parameters('aksLoadBalancerData')]"
+                        }
+                    }
+                ],
                 "gatewayIPConfigurations": [
                     {
                         "name": "apw-ip-configuration",
@@ -163,7 +236,7 @@
                     {
                         "name": "apw-frontend-ports",
                         "properties": {
-                            "Port": 80
+                            "port": 443
                         }
                     }
                 ],
@@ -179,32 +252,48 @@
                 },
                 "enableHttp2": false,
                 "sslCertificates": [
+                    {
+                        "name": "[concat(variables('agwName'), '-ssl-certificate')]",
+                        "properties": {
+                            "data": "[parameters('appGatewayCertificateData')]",
+                            "password": "contoso"
+                        }
+                    }
                 ],
                 "probes": [
                 ],
                 "backendAddressPools": [
                     {
-                        "name": "bepool-clusteringress",
+                        "name": "bu0001a0008-00.bicycle.contoso.com",
                         "properties": {
                             "backendAddresses": [
+                                {
+                                    "fqdn": "bu0001a0008-00.bicycle.contoso.com"
+                                }
                             ]
                         }
                     }
                 ],
                 "backendHttpSettingsCollection": [
                     {
-                        "name": "httpsettings-default",
+                        "name": "bepool-httpsettings",
                         "properties": {
-                            "Port": 80,
-                            "Protocol": "Http",
+                            "port": 443,
+                            "protocol": "Https",
                             "cookieBasedAffinity": "Disabled",
-                            "requestTimeout": 20
+                            "pickHostNameFromBackendAddress": true,
+                            "requestTimeout": 20,
+                            "trustedRootCertificates": [
+                                {
+                                    "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('agwName')), '/trustedRootCertificates/root-cert-wildcard-bicycle-contoso')]"
+                                }
+                            ]
                         }
                     }
                 ],
                 "httpListeners": [
                     {
-                        "name": "listener-default",
+                        "name": "listener-https",
                         "properties": {
                             "frontendIPConfiguration": {
                                 "id": "[concat(variables('apwResourceId'), '/frontendIPConfigurations/apw-frontend-ip-configuration')]"
@@ -212,8 +301,13 @@
                             "frontendPort": {
                                 "id": "[concat(variables('apwResourceId'), '/frontendPorts/apw-frontend-ports')]"
                             },
-                            "protocol": "Http",
-                            "sslCertificate": null
+                            "protocol": "Https",
+                            "sslCertificate": {
+                                "id": "[concat(variables('apwResourceId'), '/sslCertificates/', variables('agwName'), '-ssl-certificate')]"
+                            },
+                            "hostNames": [
+                            ],
+                            "requireServerNameIndication": false
                         }
                     }
                 ],
@@ -223,13 +317,13 @@
                         "properties": {
                             "RuleType": "Basic",
                             "httpListener": {
-                                "id": "[concat(variables('apwResourceId'), '/httpListeners/listener-default')]"
+                                "id": "[concat(variables('apwResourceId'), '/httpListeners/listener-https')]"
                             },
                             "backendAddressPool": {
-                                "id": "[concat(variables('apwResourceId'), '/backendAddressPools/bepool-clusteringress')]"
+                                "id": "[concat(variables('apwResourceId'), '/backendAddressPools/bu0001a0008-00.bicycle.contoso.com')]"
                             },
                             "backendHttpSettings": {
-                                "id": "[concat(variables('apwResourceId'), '/backendHttpSettingsCollection/httpsettings-default')]"
+                                "id": "[concat(variables('apwResourceId'), '/backendHttpSettingsCollection/bepool-httpsettings')]"
                             }
                         }
                     }
@@ -250,15 +344,6 @@
                     "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
                     "contentVersion": "1.0.0.0",
                     "resources": [
-                        {
-                            "type": "Microsoft.Network/virtualNetworks/providers/roleAssignments",
-                            "apiVersion": "2018-09-01-preview",
-                            "name": "[concat(split(parameters('targetVnetResourceId'),'/')[8], '/Microsoft.Authorization/', guid(concat(resourceGroup().id), variables('networkContributorRole')))]",
-                            "properties": {
-                                "roleDefinitionId": "[variables('networkContributorRole')]",
-                                "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName')), '2020-03-01').identityProfile.kubeletidentity.objectId]"
-                            }
-                        },
                         {
                             "type": "Microsoft.Network/virtualNetworks/providers/roleAssignments",
                             "apiVersion": "2018-09-01-preview",
@@ -315,8 +400,10 @@
                 "adminUserEnabled": false,
                 "networkRuleSet": {
                     "defaultAction": "Deny",
-                    "virtualNetworkRules": [],
-                    "ipRules": []
+                    "virtualNetworkRules": [
+                    ],
+                    "ipRules": [
+                    ]
                 },
                 "policies": {
                     "quarantinePolicy": {
@@ -341,7 +428,8 @@
                     "dependsOn": [
                         "[variables('defaultAcrName')]"
                     ],
-                    "properties": {}
+                    "properties": {
+                    }
                 }
             ]
         },
@@ -370,7 +458,7 @@
                     }
                 ]
             }
-        },  
+        },
         {
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2020-03-01",

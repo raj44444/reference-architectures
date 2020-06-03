@@ -6,6 +6,9 @@ main_subscription=**Your Main subscription**
 AKS_ENDUSER_NAME=aksuser1@contosobicycle.com
 AKS_ENDUSER_PASSWORD=**Your valid password**
 
+APPGW_APP_URL=app.bicycle.contoso.com
+PFX_PASSWORD=contoso
+
 # Cluster Parameters. 
 # Copy from pre-cluster-stump.sh output
 CLUSTER_VNET_RESOURCE_ID=
@@ -15,6 +18,7 @@ FIREWALL_SUBNET_RESOURCEID=
 GATEWAY_SUBNET_RESOURCE_ID=
 k8sRbacAadProfileAdminGroupObjectID=
 k8sRbacAadProfileTenantId=
+clusterLoadBalancerIpAddress=
 
 # Used for services that support native geo-redundancy (Azure Container Registry)
 # Ideally should be the paired region of $RGLOCATION
@@ -34,6 +38,17 @@ echo ""
 echo "# Deploying AKS Cluster"
 echo ""
 
+## Cluster Certificate - AKS Internal Load Balancer
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -out traefik-ingress-internal-bicycle-contoso-com-tls.crt \
+        -keyout traefik-ingress-internal-bicycle-contoso-com-tls.key \
+        -subj "/CN=*.bicycle.contoso.com/O=Contoso Bicycle"
+AKS_BALANCER_CERT_DATA=$(cat traefik-ingress-internal-bicycle-contoso-com-tls.crt | base64 | tr -d '\n' | tr -d '\r')
+
+# App Gateway Certificate
+openssl pkcs12 -export -out appgw_std.pfx -in traefik-ingress-internal-bicycle-contoso-com-tls.crt -inkey traefik-ingress-internal-bicycle-contoso-com-tls.key -passout pass:$PFX_PASSWORD
+APPGW_CERT_DATA=$(cat appgw_std.pfx | base64 | tr -d '\n' | tr -d '\r')
+
 #AKS Cluster Creation. Advance Networking. AAD identity integration. This might take about 8 minutes
 az deployment group create --resource-group "${RGNAMECLUSTER}" --template-file "cluster-stamp.json" --name "cluster-0001" --parameters \
                location=$RGLOCATION \
@@ -41,7 +56,9 @@ az deployment group create --resource-group "${RGNAMECLUSTER}" --template-file "
                targetVnetResourceId=$CLUSTER_VNET_RESOURCE_ID \
                k8sRbacAadProfileAdminGroupObjectID=$k8sRbacAadProfileAdminGroupObjectID \
                k8sRbacAadProfileTenantId=$k8sRbacAadProfileTenantId \
-               keyvaultAclAllowedSubnetResourceIds="['$FIREWALL_SUBNET_RESOURCEID', '$GATEWAY_SUBNET_RESOURCE_ID']"
+               keyvaultAclAllowedSubnetResourceIds="['$FIREWALL_SUBNET_RESOURCEID', '$GATEWAY_SUBNET_RESOURCE_ID']" \
+               appGatewayCertificateData=$APPGW_CERT_DATA \
+               aksLoadBalancerData=$AKS_BALANCER_CERT_DATA
 
 AKS_CLUSTER_NAME=$(az deployment group show -g $RGNAMECLUSTER -n cluster-0001 --query properties.outputs.aksClusterName.value -o tsv)
 
@@ -70,6 +87,42 @@ cat << EOF
 
 NEXT STEPS
 ---- -----
+# Your AKS Internal Load Balancer should be 
+$clusterLoadBalancerIpAddress
+
+You already have generated the following dertificate files for your ingress controller
+   -traefik-ingress-internal-bicycle-contoso-com-tls.crt 
+   -keyout traefik-ingress-internal-bicycle-contoso-com-tls.key 
+
+# Deploy application
+
+az login
+az account set -s  $main_subscription
+az aks get-credentials -n ${AKS_CLUSTER_NAME} -g ${RGNAMECLUSTER} --admin
+kubectl create ns a0008
+
+'cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bicycle-contoso-com-tls-secret
+  namespace: a0008
+data:
+  tls.crt: $(cat traefik-ingress-internal-bicycle-contoso-com-tls.crt | base64 -w 0)
+  tls.key: $(cat traefik-ingress-internal-bicycle-contoso-com-tls.key | base64 -w 0)
+type: kubernetes.io/tls
+EOF'
+
+kubectl apply -f ../workload/traefik.yaml
+kubectl apply -f ../workload/aspnetapp.yaml
+
+# the ASPNET Core webapp sample is all setup. Wait until is ready to process requests running:
+kubectl wait --namespace a0008 \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/name=aspnetapp \
+  --timeout=90s
+#you must see the address 10.240.4.4
+kubectl get ingress aspnetapp-ingress -n a0008
 
 # Temporary section. It is going to be deleted in the future. Testing k8sRBAC-AAD Groups
 
@@ -81,9 +134,6 @@ User Name:${AKS_ENDUSER_NAME} Pass:${AKS_ENDUSER_PASSWORD} objectId:${AKS_ENDUSR
 
 Testing role after update yaml file (cluster-settings/user-facing-cluster-role-aad-group.yaml). Execute:
 
-az login
-az account set -s $main_subscription
-az aks get-credentials -n ${AKS_CLUSTER_NAME} -g ${RGNAMECLUSTER} --admin
 kubectl apply -f ./cluster-settings/user-facing-cluster-role-aad-group.yaml
 az aks get-credentials -n ${AKS_CLUSTER_NAME} -g ${RGNAMECLUSTER} --overwrite-existing
 kubectl get all

@@ -15,6 +15,9 @@ AKS_ENDUSER_NAME=aksuser@contosobicycle.com
 AKS_ENDUSER_PASSWORD=**Your valid password**
 k8sRbacAadProfileAdminGroupName="${aksName}-add-admin"
 
+# Your AKS Internal Load Balancer should be a valid Ip of the cluster nodes subnet
+clusterLoadBalancerIpAddress="10.240.4.4"
+
 echo ""
 echo "# Creating users and group for AAD-AKS integration. It could be in a different tenant"
 echo ""
@@ -51,7 +54,8 @@ az group create --name "${RGNAMESPOKES}" --location "${RGLOCATION}"
 
 az deployment group  create --resource-group "${RGNAMESPOKES}" --template-file "./networking/spoke-BU0001A0008.json" --name "spoke-0001" --parameters \
           location=$RGLOCATION \
-          hubVnetResourceId=$HUB_VNET_ID
+          hubVnetResourceId=$HUB_VNET_ID \
+          clusterLoadBalancerIpAddress=$clusterLoadBalancerIpAddress
 
 CLUSTER_VNET_RESOURCE_ID=$(az deployment group show -g $RGNAMESPOKES -n spoke-0001 --query properties.outputs.clusterVnetResourceId.value -o tsv)
 
@@ -88,6 +92,7 @@ FIREWALL_SUBNET_RESOURCEID=${FIREWALL_SUBNET_RESOURCEID}
 GATEWAY_SUBNET_RESOURCE_ID=${GATEWAY_SUBNET_RESOURCE_ID}
 k8sRbacAadProfileAdminGroupObjectID=${k8sRbacAadProfileAdminGroupObjectID}
 k8sRbacAadProfileTenantId=${k8sRbacAadProfileTenantId}
+clusterLoadBalancerIpAddress=${clusterLoadBalancerIpAddress}
 
 2) The user which will stamp the cluster will need the following minimum permissions
 

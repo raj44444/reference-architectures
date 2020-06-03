@@ -8,6 +8,12 @@
                 "description": "The hub networking which it is going to be peering"
             }
         },
+        "clusterLoadBalancerIpAddress": {
+            "type": "string",
+            "metadata": {
+                "description": "Internal cluster Load Balancer ip Address"
+            }
+        },
         "location": {
             "type": "string",
             "allowedValues": [
@@ -73,7 +79,8 @@
                         "name": "snet-clusternodes",
                         "properties": {
                             "addressPrefix": "10.240.0.0/22",
-                            "serviceEndpoints": [],
+                            "serviceEndpoints": [
+                            ],
                             "routeTable": {
                                 "id": "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]"
                             },
@@ -177,7 +184,8 @@
             "apiVersion": "2018-09-01",
             "name": "privatelink.azurecr.io",
             "location": "global",
-            "properties": {}
+            "properties": {
+            }
         },
         {
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
@@ -187,6 +195,47 @@
             "dependsOn": [
                 "[resourceId('Microsoft.Network/virtualNetworks', variables('clusterVNetName'))]",
                 "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.azurecr.io')]"
+            ],
+            "properties": {
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('clusterVNetName'))]"
+                },
+                "registrationEnabled": false
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2018-09-01",
+            "name": "bicycle.contoso.com",
+            "location": "global",
+            "resources": [
+                {
+                    "type": "A",
+                    "apiVersion": "2018-09-01",
+                    "name": "bu0001a0008-00",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Network/privateDnsZones', 'bicycle.contoso.com')]"
+                    ],
+                    "properties": {
+                        "ttl": 3600,
+                        "aRecords": [
+                            {
+                                "ipv4Address": "[parameters('clusterLoadBalancerIpAddress')]"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "properties": {
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2018-09-01",
+            "name": "[concat('bicycle.contoso.com/cluster-dns-link')]",
+            "location": "global",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones','bicycle.contoso.com')]"
             ],
             "properties": {
                 "virtualNetwork": {
