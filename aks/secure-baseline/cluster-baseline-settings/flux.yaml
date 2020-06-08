@@ -66,6 +66,15 @@ spec:
       - name: flux
         image: docker.io/fluxcd/flux:1.19.0
         imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          allowPrivilegeEscalation: false
+          # create folder in the root fs when cloning repos
+          readOnlyRootFilesystem: false
+          # access to root folder like /.kube/config
+          runAsNonRoot: false
         volumeMounts:
         - name: git-key
           mountPath: /etc/fluxd/ssh
