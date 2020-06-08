@@ -62,15 +62,14 @@ spec:
       - name: git-key
         secret:
           secretName: flux-git-deploy
-          defaultMode: 0400
-      - name: git-keygen
-        emptyDir:
-          medium: Memory
-
       containers:
       - name: flux
         image: docker.io/fluxcd/flux:1.19.0
         imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: git-key
+          mountPath: /etc/fluxd/ssh
+          readOnly: false
         resources:
           requests:
             cpu: 50m
@@ -89,14 +88,7 @@ spec:
             path: /api/flux/v6/identity.pub
           initialDelaySeconds: 5
           timeoutSeconds: 5
-        volumeMounts:
-        - name: git-key
-          mountPath: /etc/fluxd/ssh
-          readOnly: true
-        - name: git-keygen
-          mountPath: /var/fluxd/keygen
         args:
-        - --ssh-keygen-dir=/var/fluxd/keygen
         - --git-url=https://github.com/mspnp/reference-architectures.git
         - --git-branch=master
         - --git-path=aks/secure-baseline/cluster-baseline-settings
@@ -107,6 +99,8 @@ spec:
         - --listen-metrics=:3031
         - --git-timeout=5m
 ---
+# This secret is ok to be initialized as empty as this will be used to store
+# sync annotations because sync state is secret implied by git-readonly
 apiVersion: v1
 kind: Secret
 metadata:
