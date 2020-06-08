@@ -107,6 +107,7 @@ spec:
         - --git-readonly
         - --sync-state=secret
         - --listen-metrics=:3031
+        - --git-timeout=5m
 ---
 apiVersion: v1
 kind: Secret
