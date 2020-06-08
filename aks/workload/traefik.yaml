@@ -255,17 +255,21 @@ spec:
             mountPath: /data
           - name: config
             mountPath: /config
+            readOnly: true
           - name: ssl
             mountPath: /certs
+            readOnly: true
         args:
         - --configfile=/config/traefik.toml
       volumes:
         - name: config
           configMap:
             name: traefik-ingress-config
+            defaultMode: 0400
         - name: ssl
           secret:
             secretName: bicycle-contoso-com-tls-secret
+            defaultMode: 0400
         - name: data
           emptyDir: {}
       nodeSelector:
