@@ -190,6 +190,9 @@ spec:
       maxUnavailable: 1
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: true
+        prometheus.io/port: 8082
       labels:
         app.kubernetes.io/name: traefik-ingress-ilb
         app.kubernetes.io/instance: traefik-ingress-ilb
@@ -235,6 +238,9 @@ spec:
           protocol: TCP
         - name: "websecure"
           containerPort: 8443
+          protocol: TCP
+        - name: "metrics"
+          containerPort: 8082
           protocol: TCP
         securityContext:
           capabilities:
