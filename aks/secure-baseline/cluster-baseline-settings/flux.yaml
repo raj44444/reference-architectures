@@ -97,7 +97,7 @@ spec:
           mountPath: /var/fluxd/keygen
         args:
         - --ssh-keygen-dir=/var/fluxd/keygen
-        - --git-url=https://github.com/mspnp/reference-architectures
+        - --git-url=https://github.com/mspnp/reference-architectures.git
         - --git-branch=master
         - --git-path=aks-baseline/aks/secure-baseline/cluster-baseline-settings
         - --git-label=flux
