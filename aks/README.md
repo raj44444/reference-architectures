@@ -29,8 +29,9 @@ The following example creates the Ingress Controller (Traefik),
 the ASPNET Core Docker sample web app and an Ingress object to route to its service.
 
 ```bash
-# Create application namespace
-kubectl create ns a0008
+# Install Flux
+kubectl create ns cluster-baseline-settings
+kubectl apply -f https://raw.githubusercontent.com/mspnp/reference-architectures/master/aks/secure-baseline/cluster-baseline-settings/flux.yaml
 
 # Create the traefik default certificate as secret
 cat <<EOF | kubectl apply -f -
