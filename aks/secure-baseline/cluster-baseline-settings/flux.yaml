@@ -69,7 +69,7 @@ spec:
 
       containers:
       - name: flux
-        image: docker.io/fluxcd/flux:1.18.0
+        image: docker.io/fluxcd/flux:1.19.0
         imagePullPolicy: IfNotPresent
         resources:
           requests:
